@@ -76,6 +76,24 @@ def save_vault(path: str, vault: dict):
         json.dump(vault, f, indent=2)
  
  
+def get_secret_input(prompt: str) -> str:
+    """Read a sensitive value either from stdin (when piped in by a
+    host-side process, e.g. host_cli.py) or interactively via getpass
+    (when vault_crypto.py is run directly, for local debugging).
+ 
+    Protocol when piped: one line per call, in the order the caller
+    needs them — e.g. for 'add', the host sends password then secret,
+    each as a single line.
+    """
+    if not sys.stdin.isatty():
+        line = sys.stdin.readline()
+        if line == "":
+            print("Error: expected input on stdin but got none.", file=sys.stderr)
+            sys.exit(1)
+        return line.rstrip("\n")
+    return getpass.getpass(prompt)
+ 
+ 
 def main():
     # Defaults to "vault.json" in the current directory for normal runs.
     # Under Gramine, the sandbox only exposes paths explicitly declared
@@ -83,7 +101,7 @@ def main():
     # to match where vault.json is actually mounted.
     vault_path = os.environ.get("VAULT_PATH", "vault.json")
     vault = load_vault(vault_path)
-    password = getpass.getpass("Master password: ")
+    password = get_secret_input("Master password: ")
  
     if vault["kdf"] is None:
         # First run: no salt/params stored yet, generate fresh ones
@@ -115,7 +133,7 @@ def main():
             print("Usage: python3 vault_crypto.py add <name>")
             return
         name = sys.argv[2]
-        secret = getpass.getpass("Secret value: ")
+        secret = get_secret_input("Secret value: ")
         vault["entries"][name] = encrypt_entry(key, secret)
         save_vault(vault_path, vault)
         print(f"Added '{name}'.")
