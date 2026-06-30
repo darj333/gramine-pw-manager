@@ -1,0 +1,9 @@
+**/vault.json
+**/vault.manifest
+**/vault.manifest.sgx
+**/vault.sig
+**/venv/
+**/__pycache__/
+*.pyc
+**/TEST_STDOUT
+**/TEST_STDERR
