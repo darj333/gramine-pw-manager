@@ -1,0 +1,72 @@
+# Gramine manifest template for vault_crypto.py
+# Adapted from gramine-src/CI-Examples/python/python.manifest.template
+
+libos.entrypoint = "{{ entrypoint }}"
+loader.log_level = "{{ log_level }}"
+loader.env.LD_LIBRARY_PATH = "/lib:/lib:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
+# Explicitly add the venv's site-packages to PYTHONPATH instead of relying
+# on Python's automatic venv detection (which requires opening pyvenv.cfg
+# inside the sandbox — this hit an unresolved Gramine permission issue
+# even though the host file itself is normally readable).
+loader.env.PYTHONPATH = "{{ venv_dir }}/lib/python3.12/site-packages"
+loader.env.VAULT_PATH = "/vault.json"
+loader.insecure__use_cmdline_argv = true
+sys.enable_sigterm_injection = true
+
+fs.mounts = [
+  { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
+  { path = "{{ arch_libdir }}", uri = "file:{{ arch_libdir }}" },
+  { path = "/usr/{{ arch_libdir }}", uri = "file:/usr/{{ arch_libdir }}" },
+{% for path in python.get_sys_path(entrypoint) %}
+  { path = "{{ path }}", uri = "file:{{ path }}" },
+{% endfor %}
+  { path = "{{ entrypoint }}", uri = "file:{{ entrypoint }}" },
+  { path = "/etc/hosts", uri = "file:helper-files/hosts" },
+
+  # vault_crypto.py itself — the script Gramine executes
+  { path = "/vault_crypto.py", uri = "file:vault_crypto.py" },
+
+  # attestation.py — Phase 3b / Contribution 3's mocked-quote + ECDH
+  # handshake module, imported by vault_crypto.py. Same trust
+  # classification as vault_crypto.py itself: static code, read-only,
+  # so it belongs in sgx.trusted_files below, not sgx.allowed_files.
+  { path = "/attestation.py", uri = "file:attestation.py" },
+
+  # vault.json is NOT trusted — it is created/modified at runtime
+  # (add/delete entries), so it must be a regular allowed file, not
+  # a trusted (measured, read-only) one.
+  { path = "/vault.json", uri = "file:vault.json" },
+
+  { type = "tmpfs", path = "/tmp" },
+]
+
+sys.stack.size = "2M"
+sys.enable_extra_runtime_domain_names_conf = true
+
+sgx.debug = true
+sgx.edmm_enable = {{ 'true' if env.get('EDMM', '0') == '1' else 'false' }}
+sgx.enclave_size = "1G"
+sgx.max_threads = {{ '1' if env.get('EDMM', '0') == '1' else '32' }}
+sgx.remote_attestation = "{{ ra_type }}"
+
+sgx.trusted_files = [
+  "file:{{ entrypoint }}",
+  "file:{{ gramine.runtimedir() }}/",
+  "file:{{ arch_libdir }}/",
+  "file:/usr/{{ arch_libdir }}/",
+{% for path in python.get_sys_path(entrypoint) %}
+  "file:{{ path }}{{ '/' if path.is_dir() else '' }}",
+{% endfor %}
+  "file:vault_crypto.py",
+  "file:attestation.py",
+  "file:helper-files/",
+]
+
+# vault.json is explicitly NOT trusted (it changes at runtime on every
+# add/delete), but it must be declared as "allowed" or Gramine denies
+# access to it entirely, even under gramine-direct with no real SGX.
+sgx.allowed_files = [
+  "file:vault.json",
+]
+
+
