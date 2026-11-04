@@ -1,0 +1,67 @@
+# Gramine manifest template for bench_kdf.py (Argon2id / EPC experiment).
+# Derived from the project's vault.manifest.template (Phase 3b). Differences:
+#   - NO vault.json mount and NO sgx.allowed_files (nothing mutable is touched;
+#     results leave through stdout, which avoids the Class 5 eager-mount trap)
+#   - NO attestation.py (not part of this experiment)
+#   - enclave size / max threads / EDMM / debug / stats / python version are
+#     template variables, supplied by the Makefile, so each experimental arm is
+#     an explicit, logged build rather than an edit to a shared file.
+#
+# Variables (-D from the Makefile):
+#   entrypoint, log_level, arch_libdir, venv_dir, py_ver, ra_type
+#   enclave_size  : e.g. "8G", or the literal "default" to omit the key
+#   max_threads   : integer
+#   edmm          : "1" or "0"
+#   sgx_debug     : "1" or "0"
+#   enable_stats  : "1" or "0"
+#   preheat       : "1" or "0" (emits sgx.preheat_enclave only when "1")
+
+libos.entrypoint = "{{ entrypoint }}"
+loader.log_level = "{{ log_level }}"
+loader.env.LD_LIBRARY_PATH = "/lib:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
+# Explicit PYTHONPATH instead of venv auto-detection (pyvenv.cfg permission
+# issue, Phase 2 issue 3). Python version is a variable: the local dev box is
+# 3.12 (noble) and the Azure target is 3.10 (jammy).
+loader.env.PYTHONPATH = "{{ venv_dir }}/lib/python{{ py_ver }}/site-packages"
+loader.insecure__use_cmdline_argv = true
+sys.enable_sigterm_injection = true
+
+fs.mounts = [
+  { path = "/lib", uri = "file:{{ gramine.runtimedir() }}" },
+  { path = "{{ arch_libdir }}", uri = "file:{{ arch_libdir }}" },
+  { path = "/usr/{{ arch_libdir }}", uri = "file:/usr/{{ arch_libdir }}" },
+{% for path in python.get_sys_path(entrypoint) %}
+  { path = "{{ path }}", uri = "file:{{ path }}" },
+{% endfor %}
+  { path = "{{ entrypoint }}", uri = "file:{{ entrypoint }}" },
+  { path = "/etc/hosts", uri = "file:helper-files/hosts" },
+  { path = "/bench_kdf.py", uri = "file:bench_kdf.py" },
+  { type = "tmpfs", path = "/tmp" },
+]
+
+sys.stack.size = "2M"
+
+sgx.debug = {{ 'true' if sgx_debug == '1' else 'false' }}
+sgx.edmm_enable = {{ 'true' if edmm == '1' else 'false' }}
+{% if enclave_size != 'default' %}
+sgx.enclave_size = "{{ enclave_size }}"
+{% endif %}
+sgx.max_threads = {{ max_threads }}
+sgx.remote_attestation = "{{ ra_type }}"
+sgx.enable_stats = {{ 'true' if enable_stats == '1' else 'false' }}
+{% if preheat == '1' %}
+sgx.preheat_enclave = true
+{% endif %}
+
+sgx.trusted_files = [
+  "file:{{ entrypoint }}",
+  "file:{{ gramine.runtimedir() }}/",
+  "file:{{ arch_libdir }}/",
+  "file:/usr/{{ arch_libdir }}/",
+{% for path in python.get_sys_path(entrypoint) %}
+  "file:{{ path }}{{ '/' if path.is_dir() else '' }}",
+{% endfor %}
+  "file:bench_kdf.py",
+  "file:helper-files/",
+]
+

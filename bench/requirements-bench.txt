@@ -1,0 +1,8 @@
+# Install with:  venv/bin/pip install --no-compile -r requirements-bench.txt
+# (--no-compile: .pyc headers embed source mtime and would enter
+#  sgx.trusted_files, changing MRENCLAVE between otherwise identical builds)
+#
+# Pinned to the version the project has used since Phase 2. The native wheel
+# of argon2-cffi-bindings is recorded in every result row; the same wheel must
+# be used in all three environments on the Azure VM.
+argon2-cffi==23.1.0
