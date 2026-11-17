@@ -2,6 +2,18 @@
 # Derived from the project's vault.manifest.template (Phase 3b). Differences:
 #   - NO vault.json mount and NO sgx.allowed_files (nothing mutable is touched;
 #     results leave through stdout, which avoids the Class 5 eager-mount trap)
+#   - NO /etc/hosts mount and NO helper-files/ trusted dir. The vault needed
+#     those for attestation networking; bench_kdf.py opens no socket and never
+#     reads /etc/hosts (checked with strace: the socket module is not even
+#     imported), so both were dead weight inherited from the ancestor template,
+#     and bench/ has no helper-files/ directory. Each copy failed at a
+#     different stage, which is why BOTH had to go rather than mkdir'ing the
+#     directory: "file:helper-files/" in sgx.trusted_files failed at build time
+#     (gramine-manifest: 'URI ends with "/" but is not a directory', because a
+#     trailing slash means "expand this directory"), while the /etc/hosts mount
+#     is not validated at render time and would have failed later, at enclave
+#     startup, as 'libos_init() failed in init_mount: ENOENT' -- the same
+#     Class 5 shape as vault.json (Phase 3) and output.json (Task #10).
 #   - NO attestation.py (not part of this experiment)
 #   - enclave size / max threads / EDMM / debug / stats / python version are
 #     template variables, supplied by the Makefile, so each experimental arm is
@@ -34,7 +46,6 @@ fs.mounts = [
   { path = "{{ path }}", uri = "file:{{ path }}" },
 {% endfor %}
   { path = "{{ entrypoint }}", uri = "file:{{ entrypoint }}" },
-  { path = "/etc/hosts", uri = "file:helper-files/hosts" },
   { path = "/bench_kdf.py", uri = "file:bench_kdf.py" },
   { type = "tmpfs", path = "/tmp" },
 ]
@@ -62,6 +73,6 @@ sgx.trusted_files = [
   "file:{{ path }}{{ '/' if path.is_dir() else '' }}",
 {% endfor %}
   "file:bench_kdf.py",
-  "file:helper-files/",
 ]
+
 
